@@ -3,6 +3,10 @@ package br.com.brunajesus.alunosapi.service;
 import java.time.Year;
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,6 +15,7 @@ import br.com.brunajesus.alunosapi.dto.AlunoCadastroDTO;
 import br.com.brunajesus.alunosapi.dto.AlunoCadastroRespostaDTO;
 import br.com.brunajesus.alunosapi.dto.AlunoDetalhesDTO;
 import br.com.brunajesus.alunosapi.dto.AlunoListagemDTO;
+import br.com.brunajesus.alunosapi.dto.PaginaRespostaDTO;
 import br.com.brunajesus.alunosapi.entity.Aluno;
 import br.com.brunajesus.alunosapi.exception.AlunoNaoEncontradoException;
 import br.com.brunajesus.alunosapi.exception.CpfJaCadastradoException;
@@ -26,8 +31,43 @@ public class AlunoService {
         this.alunoRepository = alunoRepository;
     }
 
-    public List<AlunoListagemDTO> listarTodos() {
-        return alunoRepository.findByAtivoTrue()
+    public PaginaRespostaDTO<AlunoListagemDTO> listarTodos(
+        String busca,
+        String status,
+        int pagina,
+        int tamanho
+    ) {
+        if (pagina < 0) {
+            throw new IllegalArgumentException(
+                "A página não pode ser negativa."
+            );
+        }
+
+        if (tamanho < 1 || tamanho > 100) {
+            throw new IllegalArgumentException(
+                "O tamanho da página deve estar entre 1 e 100."
+            );
+        }
+
+        String buscaNormalizada = normalizarBusca(busca);
+        String statusNormalizado = normalizarStatus(status);
+
+        Pageable paginacao = PageRequest.of(
+            pagina,
+            tamanho,
+            Sort.by(
+                Sort.Order.asc("nome").ignoreCase()
+            )
+        );
+
+        Page<Aluno> resultado = alunoRepository.buscarAtivos(
+            buscaNormalizada,
+            statusNormalizado,
+            paginacao
+        );
+
+        List<AlunoListagemDTO> alunos = resultado
+            .getContent()
             .stream()
             .map(aluno -> new AlunoListagemDTO(
                 aluno.getId(),
@@ -36,6 +76,16 @@ public class AlunoService {
                 aluno.getStatus()
             ))
             .toList();
+
+        return new PaginaRespostaDTO<>(
+            alunos,
+            resultado.getNumber(),
+            resultado.getSize(),
+            resultado.getTotalElements(),
+            resultado.getTotalPages(),
+            resultado.isFirst(),
+            resultado.isLast()
+        );
     }
 
     public AlunoDetalhesDTO buscarPorId(Long id) {
@@ -54,7 +104,9 @@ public class AlunoService {
     }
 
     @Transactional
-    public AlunoCadastroRespostaDTO cadastrar(AlunoCadastroDTO dados) {
+    public AlunoCadastroRespostaDTO cadastrar(
+        AlunoCadastroDTO dados
+    ) {
         String nome = dados.nome().trim();
         String cpf = dados.cpf().replaceAll("\\D", "");
         String email = dados.email().trim().toLowerCase();
@@ -79,7 +131,10 @@ public class AlunoService {
 
         Aluno alunoSalvo = alunoRepository.save(aluno);
 
-        String matricula = gerarMatricula(alunoSalvo.getId());
+        String matricula = gerarMatricula(
+            alunoSalvo.getId()
+        );
+
         alunoSalvo.setMatricula(matricula);
 
         alunoRepository.save(alunoSalvo);
@@ -134,6 +189,39 @@ public class AlunoService {
         aluno.setAtivo(false);
 
         alunoRepository.save(aluno);
+    }
+
+    private String normalizarBusca(String busca) {
+        if (busca == null || busca.isBlank()) {
+            return null;
+        }
+
+        return busca.trim();
+    }
+
+    private String normalizarStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return "ATIVO";
+        }
+
+        String statusNormalizado = status
+            .trim()
+            .toUpperCase();
+
+        if (statusNormalizado.equals("TODOS")) {
+            return null;
+        }
+
+        if (
+            !statusNormalizado.equals("ATIVO") &&
+            !statusNormalizado.equals("INATIVO")
+        ) {
+            throw new IllegalArgumentException(
+                "O status deve ser TODOS, ATIVO ou INATIVO."
+            );
+        }
+
+        return statusNormalizado;
     }
 
     private String gerarMatricula(Long id) {

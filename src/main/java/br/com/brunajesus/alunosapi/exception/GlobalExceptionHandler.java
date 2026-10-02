@@ -92,4 +92,21 @@ public class GlobalExceptionHandler {
         .body(erro);
 }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErroRespostaDTO> tratarArgumentoInvalido(
+        IllegalArgumentException exception,
+        HttpServletRequest request
+) {
+    ErroRespostaDTO erro = new ErroRespostaDTO(
+        HttpStatus.BAD_REQUEST.value(),
+        HttpStatus.BAD_REQUEST.getReasonPhrase(),
+        exception.getMessage(),
+        request.getRequestURI()
+    );
+
+    return ResponseEntity
+        .status(HttpStatus.BAD_REQUEST)
+        .body(erro);
+}
+
 }
